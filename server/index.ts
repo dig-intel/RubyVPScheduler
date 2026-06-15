@@ -1,10 +1,11 @@
 import express from "express";
+import { Resend } from "resend";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
-import nodemailer from "nodemailer";
+// import nodemailer from "nodemailer";
 import { google } from "googleapis";
 
 dotenv.config();
@@ -42,12 +43,12 @@ async function startServer() {
     next(err);
   });
 
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = Number(process.env.SMTP_PORT || 587);
-  const smtpSecure = process.env.SMTP_SECURE === "true";
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-  const smtpFrom = process.env.SMTP_FROM || smtpUser;
+  // const smtpHost = process.env.SMTP_HOST;
+  // const smtpPort = Number(process.env.SMTP_PORT || 587);
+  // const smtpSecure = process.env.SMTP_SECURE === "true";
+  // const smtpUser = process.env.SMTP_USER;
+  // const smtpPass = process.env.SMTP_PASS;
+  // const smtpFrom = process.env.SMTP_FROM || smtpUser;
   const serviceAccountCredentials = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
     ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
     : undefined;
@@ -62,21 +63,23 @@ async function startServer() {
     "1Jb6Xtq2yj9xh6H8rBD7g6kHC11vI6tFvVkj4hHg8sKE";
   const sheetsTabName = "UnitNoOwnerInfo";
   const slotsTabName = "VPSlots";
-  if (!smtpHost || !smtpUser || !smtpPass) {
-    console.warn(
-      "SMTP configuration is incomplete. /api/send-email will fail until SMTP_HOST, SMTP_USER, and SMTP_PASS are provided."
-    );
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: smtpHost || "smtp.gmail.com",
-    port: smtpPort,
-    secure: smtpSecure,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
+  // if (!smtpHost || !smtpUser || !smtpPass) {
+  //   console.warn(
+  //     "SMTP configuration is incomplete. /api/send-email will fail until SMTP_HOST, SMTP_USER, and SMTP_PASS are provided."
+  //   );
+  // }
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const resendFrom =
+    process.env.RESEND_FROM || "digitalintelligencesdnbhd@gmail.com";
+  // const transporter = nodemailer.createTransport({
+  //   host: smtpHost || "smtp.gmail.com",
+  //   port: smtpPort,
+  //   secure: smtpSecure,
+  //   auth: {
+  //     user: smtpUser,
+  //     pass: smtpPass,
+  //   },
+  // });
 
   async function getSheetsAuth() {
     const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS
@@ -108,34 +111,44 @@ async function startServer() {
     const { to, subject, text, html } = req.body || {};
 
     if (!to || !subject || (!text && !html)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Missing required email fields: to, subject, text/html.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Missing required email fields: to, subject, text/html.",
+      });
     }
 
-    if (!smtpHost || !smtpUser || !smtpPass) {
-      return res
-        .status(500)
-        .json({
-          success: false,
-          message: "SMTP is not configured on the server.",
-        });
+    // if (!smtpHost || !smtpUser || !smtpPass) {
+    //   return res
+    //     .status(500)
+    //     .json({
+    //       success: false,
+    //       message: "SMTP is not configured on the server.",
+    //     });
+    // }
+    if (!process.env.RESEND_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        message: "Resend is not configured on the server.",
+      });
     }
-
     try {
-      await transporter.sendMail({
-        from: smtpFrom,
+      await resend.emails.send({
+        from: resendFrom,
         to,
         subject,
         text,
         html,
       });
+      // await transporter.sendMail({
+      //   from: smtpFrom,
+      //   to,
+      //   subject,
+      //   text,
+      //   html,
+      // });
       return res.json({ success: true, message: "Email sent successfully." });
     } catch (error) {
-      console.error("[SMTP] send mail failed", error);
+      console.error("[Resend] send mail failed", error);
       return res.status(500).json({ success: false, message: String(error) });
     }
   });
@@ -177,22 +190,39 @@ async function startServer() {
           values: [[appointmentDate]],
         },
       });
-
-      if (!smtpHost || !smtpUser || !smtpPass) {
-        return res
-          .status(500)
-          .json({
-            success: false,
-            message: "SMTP is not configured on the server.",
-          });
-      }
-
-      await transporter.sendMail({
-        from: smtpFrom,
+      await resend.emails.send({
+        from: resendFrom,
         to: purchaserEmail,
         subject: "Vacant Possession (VP) Appointment Confirmation - Ruby",
-        text: `Dear ${purchaserName},\n\nYour Vacant Possession (VP) appointment for Unit No has been confirmed.\n\nAppointment Details:\n${appointmentDate}\n\nVenue: Aviscon Management Office, Ruby Clubhouse\n\nPlease arrive 15 minutes prior to your slot. If you need to reschedule, please call Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`,
+        text: `Dear ${purchaserName},
+
+Your Vacant Possession (VP) appointment for Unit No has been confirmed.
+
+Appointment Details:
+${appointmentDate}
+
+Venue: Aviscon Management Office, Ruby Clubhouse
+
+Please arrive 15 minutes prior to your slot. If you need to reschedule, please call Aviscon Property Management at 03-2011 9966.
+
+Warm regards,
+Aviscon Property Management`,
       });
+      // if (!smtpHost || !smtpUser || !smtpPass) {
+      //   return res
+      //     .status(500)
+      //     .json({
+      //       success: false,
+      //       message: "SMTP is not configured on the server.",
+      //     });
+      // }
+
+      // await transporter.sendMail({
+      //   from: smtpFrom,
+      //   to: purchaserEmail,
+      //   subject: "Vacant Possession (VP) Appointment Confirmation - Ruby",
+      //   text: `Dear ${purchaserName},\n\nYour Vacant Possession (VP) appointment for Unit No has been confirmed.\n\nAppointment Details:\n${appointmentDate}\n\nVenue: Aviscon Management Office, Ruby Clubhouse\n\nPlease arrive 15 minutes prior to your slot. If you need to reschedule, please call Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`,
+      // });
 
       return res.json({
         success: true,
@@ -213,13 +243,11 @@ async function startServer() {
       rowIndex === null ||
       (appointmentDate === undefined && dateSendVPNotice === undefined)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Missing required sheet update fields: rowIndex and at least one field to update.",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Missing required sheet update fields: rowIndex and at least one field to update.",
+      });
     }
 
     try {
@@ -311,8 +339,6 @@ async function startServer() {
       ? path.resolve(__dirname, "public")
       : path.resolve(__dirname, "..", "dist", "public");
 
- 
-
   app.get("/api/slots", async (req, res) => {
     const { date } = req.query;
     if (!date || typeof date !== "string") {
@@ -359,40 +385,86 @@ async function startServer() {
   };
   // Init slots — auto-generate next 14 days if missing
   app.post("/api/init-slots", async (req, res) => {
-  try {
-    const auth = await getSheetsAuth();
-    const sheets = google.sheets({ version: "v4", auth });
+    try {
+      const auth = await getSheetsAuth();
+      const sheets = google.sheets({ version: "v4", auth });
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetsSpreadsheetId,
-      range: `${slotsTabName}!A2:G`,
-    });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsSpreadsheetId,
+        range: `${slotsTabName}!A2:G`,
+      });
 
-    const existingRows = response.data.values || [];
-    const today = toLocalDateStr(new Date());
+      const existingRows = response.data.values || [];
+      const today = toLocalDateStr(new Date());
 
-    // Separate rows to keep vs delete
-    const rowsToKeep: { row: string[]; originalIndex: number }[] = [];
-    const rowsToDelete: number[] = [];
+      // Separate rows to keep vs delete
+      const rowsToKeep: { row: string[]; originalIndex: number }[] = [];
+      const rowsToDelete: number[] = [];
 
-    existingRows.forEach((row, idx) => {
-      const date = row[0] || '';
-      const hasBooking = [row[4], row[5], row[6]].some(v => v && v.trim() !== '');
-      const isPast = date < today;
+      existingRows.forEach((row, idx) => {
+        const date = row[0] || "";
+        const hasBooking = [row[4], row[5], row[6]].some(
+          v => v && v.trim() !== ""
+        );
+        const isPast = date < today;
 
-      if (isPast && !hasBooking) {
-        rowsToDelete.push(idx); // mark for deletion
-      } else {
-        rowsToKeep.push({ row, originalIndex: idx });
+        if (isPast && !hasBooking) {
+          rowsToDelete.push(idx); // mark for deletion
+        } else {
+          rowsToKeep.push({ row, originalIndex: idx });
+        }
+      });
+
+      // If there are rows to delete, rewrite the whole sheet without them
+      if (rowsToDelete.length > 0) {
+        const keptRows = rowsToKeep.map(r => r.row);
+
+        // Generate new slots for next 14 days
+        const existingDates = new Set(keptRows.map(r => r[0]));
+        const defaultTimes = [
+          { start: "09:00 AM", end: "10:00 AM" },
+          { start: "10:30 AM", end: "11:30 AM" },
+          { start: "02:00 PM", end: "03:00 PM" },
+          { start: "03:30 PM", end: "04:30 PM" },
+        ];
+
+        const newRows: string[][] = [];
+        for (let i = 1; i <= 14; i++) {
+          const future = new Date();
+          future.setDate(new Date().getDate() + i);
+          const dateStr = toLocalDateStr(future);
+          if (!existingDates.has(dateStr)) {
+            for (const t of defaultTimes) {
+              newRows.push([dateStr, t.start, t.end, "3", "", "", ""]);
+            }
+          }
+        }
+
+        const allRows = [...keptRows, ...newRows];
+
+        // Clear from row 2 down and rewrite
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId: sheetsSpreadsheetId,
+          range: `${slotsTabName}!A2:G`,
+        });
+
+        if (allRows.length > 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: sheetsSpreadsheetId,
+            range: `${slotsTabName}!A2`,
+            valueInputOption: "USER_ENTERED",
+            requestBody: { values: allRows },
+          });
+        }
+
+        return res.json({
+          success: true,
+          message: `Cleaned ${rowsToDelete.length} empty past rows, added ${newRows.length} new slot rows.`,
+        });
       }
-    });
 
-    // If there are rows to delete, rewrite the whole sheet without them
-    if (rowsToDelete.length > 0) {
-      const keptRows = rowsToKeep.map(r => r.row);
-
-      // Generate new slots for next 14 days
-      const existingDates = new Set(keptRows.map(r => r[0]));
+      // No deletions needed, just add missing future dates
+      const existingDates = new Set(existingRows.map(r => r[0]));
       const defaultTimes = [
         { start: "09:00 AM", end: "10:00 AM" },
         { start: "10:30 AM", end: "11:30 AM" },
@@ -407,123 +479,82 @@ async function startServer() {
         const dateStr = toLocalDateStr(future);
         if (!existingDates.has(dateStr)) {
           for (const t of defaultTimes) {
-            newRows.push([dateStr, t.start, t.end, '3', '', '', '']);
+            newRows.push([dateStr, t.start, t.end, "3", "", "", ""]);
           }
         }
       }
 
-      const allRows = [...keptRows, ...newRows];
-
-      // Clear from row 2 down and rewrite
-      await sheets.spreadsheets.values.clear({
-        spreadsheetId: sheetsSpreadsheetId,
-        range: `${slotsTabName}!A2:G`,
-      });
-
-      if (allRows.length > 0) {
-        await sheets.spreadsheets.values.update({
+      if (newRows.length > 0) {
+        await sheets.spreadsheets.values.append({
           spreadsheetId: sheetsSpreadsheetId,
-          range: `${slotsTabName}!A2`,
+          range: `${slotsTabName}!A1`,
           valueInputOption: "USER_ENTERED",
-          requestBody: { values: allRows },
+          requestBody: { values: newRows },
         });
       }
 
       return res.json({
         success: true,
-        message: `Cleaned ${rowsToDelete.length} empty past rows, added ${newRows.length} new slot rows.`,
+        message: `No cleanup needed. Added ${newRows.length} new slot rows.`,
       });
+    } catch (error) {
+      console.error("[Slots] init failed", error);
+      return res.status(500).json({ success: false, message: String(error) });
     }
-
-    // No deletions needed, just add missing future dates
-    const existingDates = new Set(existingRows.map(r => r[0]));
-    const defaultTimes = [
-      { start: "09:00 AM", end: "10:00 AM" },
-      { start: "10:30 AM", end: "11:30 AM" },
-      { start: "02:00 PM", end: "03:00 PM" },
-      { start: "03:30 PM", end: "04:30 PM" },
-    ];
-
-    const newRows: string[][] = [];
-    for (let i = 1; i <= 14; i++) {
-      const future = new Date();
-      future.setDate(new Date().getDate() + i);
-      const dateStr = toLocalDateStr(future);
-      if (!existingDates.has(dateStr)) {
-        for (const t of defaultTimes) {
-          newRows.push([dateStr, t.start, t.end, '3', '', '', '']);
-        }
-      }
-    }
-
-    if (newRows.length > 0) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: sheetsSpreadsheetId,
-        range: `${slotsTabName}!A1`,
-        valueInputOption: "USER_ENTERED",
-        requestBody: { values: newRows },
-      });
-    }
-
-    return res.json({
-      success: true,
-      message: `No cleanup needed. Added ${newRows.length} new slot rows.`,
-    });
-  } catch (error) {
-    console.error("[Slots] init failed", error);
-    return res.status(500).json({ success: false, message: String(error) });
-  }
-});
+  });
 
   app.get("/api/all-slots", async (req, res) => {
-  try {
-    const auth = await getSheetsAuth();
-    const sheets = google.sheets({ version: "v4", auth });
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetsSpreadsheetId,
-      range: `${slotsTabName}!A2:G`,
-    });
+    try {
+      const auth = await getSheetsAuth();
+      const sheets = google.sheets({ version: "v4", auth });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsSpreadsheetId,
+        range: `${slotsTabName}!A2:G`,
+      });
 
-    const rows = response.data.values || [];
-    const slots = rows.map((row, idx) => ({
-      Date: row[0] || '',
-      StartTime: row[1] || '',
-      EndTime: row[2] || '',
-      SlotsAvailNo: Number(row[3] ?? 3),
-      Slot1BookedBy: row[4] || null,
-      Slot2BookedBy: row[5] || null,
-      Slot3BookedBy: row[6] || null,
-      rowIndex: idx + 2,
-    }));
+      const rows = response.data.values || [];
+      const slots = rows.map((row, idx) => ({
+        Date: row[0] || "",
+        StartTime: row[1] || "",
+        EndTime: row[2] || "",
+        SlotsAvailNo: Number(row[3] ?? 3),
+        Slot1BookedBy: row[4] || null,
+        Slot2BookedBy: row[5] || null,
+        Slot3BookedBy: row[6] || null,
+        rowIndex: idx + 2,
+      }));
 
-    return res.json({ success: true, slots });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: String(error) });
-  }
-});
+      return res.json({ success: true, slots });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: String(error) });
+    }
+  });
 
-app.post("/api/update-slot", async (req, res) => {
-  const { rowIndex, StartTime, EndTime } = req.body || {};
-  if (!rowIndex) return res.status(400).json({ success: false, message: "Missing rowIndex." });
+  app.post("/api/update-slot", async (req, res) => {
+    const { rowIndex, StartTime, EndTime } = req.body || {};
+    if (!rowIndex)
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing rowIndex." });
 
-  try {
-    const auth = await getSheetsAuth();
-    const sheets = google.sheets({ version: "v4", auth });
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: sheetsSpreadsheetId,
-      requestBody: {
-        valueInputOption: "USER_ENTERED",
-        data: [
-          { range: `${slotsTabName}!B${rowIndex}`, values: [[StartTime]] },
-          { range: `${slotsTabName}!C${rowIndex}`, values: [[EndTime]] },
-        ],
-      },
-    });
-    return res.json({ success: true });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: String(error) });
-  }
-});
+    try {
+      const auth = await getSheetsAuth();
+      const sheets = google.sheets({ version: "v4", auth });
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsSpreadsheetId,
+        requestBody: {
+          valueInputOption: "USER_ENTERED",
+          data: [
+            { range: `${slotsTabName}!B${rowIndex}`, values: [[StartTime]] },
+            { range: `${slotsTabName}!C${rowIndex}`, values: [[EndTime]] },
+          ],
+        },
+      });
+      return res.json({ success: true });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: String(error) });
+    }
+  });
 
   // Book a slot — update VPSlots sheet
   app.post("/api/book-slot", async (req, res) => {
@@ -607,14 +638,32 @@ app.post("/api/update-slot", async (req, res) => {
       });
 
       // Send confirmation email
-      if (smtpHost && smtpUser && smtpPass) {
-        await transporter.sendMail({
-          from: smtpFrom,
-          to: purchaserEmail,
-          subject: "Vacant Possession (VP) Appointment Confirmation - Ruby",
-          text: `Dear ${purchaserName},\n\nYour Vacant Possession (VP) appointment for Unit ${unitNo} has been confirmed.\n\nAppointment Details:\n${appointmentDate}\n\nVenue: Aviscon Management Office, Ruby Clubhouse\n\nPlease arrive 15 minutes prior to your slot. If you need to reschedule, please call Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`,
-        });
-      }
+      // if (smtpHost && smtpUser && smtpPass) {
+      //   await transporter.sendMail({
+      //     from: smtpFrom,
+      //     to: purchaserEmail,
+      //     subject: "Vacant Possession (VP) Appointment Confirmation - Ruby",
+      //     text: `Dear ${purchaserName},\n\nYour Vacant Possession (VP) appointment for Unit ${unitNo} has been confirmed.\n\nAppointment Details:\n${appointmentDate}\n\nVenue: Aviscon Management Office, Ruby Clubhouse\n\nPlease arrive 15 minutes prior to your slot. If you need to reschedule, please call Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`,
+      //   });
+      // }
+      await resend.emails.send({
+        from: resendFrom,
+        to: purchaserEmail,
+        subject: "Vacant Possession (VP) Appointment Confirmation - Ruby",
+        text: `Dear ${purchaserName},
+
+Your Vacant Possession (VP) appointment for Unit ${unitNo} has been confirmed.
+
+Appointment Details:
+${appointmentDate}
+
+Venue: Aviscon Management Office, Ruby Clubhouse
+
+Please arrive 15 minutes prior to your slot. If you need to reschedule, please call Aviscon Property Management at 03-2011 9966.
+
+Warm regards,
+Aviscon Property Management`,
+      });
       console.log("[BookSlot] slotRowIndex:", slotRowIndex, "row data:", row);
       return res.json({
         success: true,
@@ -626,7 +675,7 @@ app.post("/api/update-slot", async (req, res) => {
     }
   });
 
-   app.use(express.static(staticPath));
+  app.use(express.static(staticPath));
 
   // Handle client-side routing - serve index.html for all routes
   app.get("*", (_req, res) => {
