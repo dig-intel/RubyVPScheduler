@@ -89,58 +89,58 @@ export default function Home() {
   }, []);
 
   // Load slots whenever date changes
-  useEffect(() => {
-    if (selectedDate) {
-      const dateStr = toLocalDateStr(selectedDate);
-      const dateSlots = MockDb.findSlotsByDate(dateStr);
-      setSlots(dateSlots);
-      setSelectedSlot(null); // Reset selection
-    }
-  }, [selectedDate]);
+  // useEffect(() => {
+  //   if (selectedDate) {
+  //     const dateStr = toLocalDateStr(selectedDate);
+  //     const dateSlots = MockDb.findSlotsByDate(dateStr);
+  //     setSlots(dateSlots);
+  //     setSelectedSlot(null); // Reset selection
+  //   }
+  // }, [selectedDate]);
 
-  const sendEmail = async (to: string, subject: string, text: string) => {
-    const response = await fetch("/api/send-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to, subject, text }),
-    });
+  // const sendEmail = async (to: string, subject: string, text: string) => {
+  //   const response = await fetch("/api/send-email", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify({ to, subject, text }),
+  //   });
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(body || "Email send failed");
-    }
+  //   if (!response.ok) {
+  //     const body = await response.text();
+  //     throw new Error(body || "Email send failed");
+  //   }
 
-    return response.json();
-  };
+  //   return response.json();
+  // };
 
-  const confirmBookingOnServer = async (
-    rowIndex: number,
-    appointmentDate: string,
-    purchaserEmail: string,
-    purchaserName: string
-  ) => {
-    const response = await fetch("/api/book-appointment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rowIndex,
-        appointmentDate,
-        purchaserEmail,
-        purchaserName,
-      }),
-    });
+  // const confirmBookingOnServer = async (
+  //   rowIndex: number,
+  //   appointmentDate: string,
+  //   purchaserEmail: string,
+  //   purchaserName: string
+  // ) => {
+  //   const response = await fetch("/api/book-appointment", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify({
+  //       rowIndex,
+  //       appointmentDate,
+  //       purchaserEmail,
+  //       purchaserName,
+  //     }),
+  //   });
 
-    if (!response.ok) {
-      const body = await response.text();
-      console.error("[Home] confirmBookingOnServer failed", {
-        status: response.status,
-        body,
-      });
-      throw new Error(body || "Booking confirmation failed");
-    }
+  //   if (!response.ok) {
+  //     const body = await response.text();
+  //     console.error("[Home] confirmBookingOnServer failed", {
+  //       status: response.status,
+  //       body,
+  //     });
+  //     throw new Error(body || "Booking confirmation failed");
+  //   }
 
-    return response.json();
-  };
+  //   return response.json();
+  // };
 
   const handleBookSlot = async () => {
     if (!currentUser || !selectedSlot) {
