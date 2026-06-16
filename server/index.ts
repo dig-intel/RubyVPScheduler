@@ -332,7 +332,75 @@ Aviscon Property Management`,
       return res.status(500).json({ success: false, message: String(error) });
     }
   });
+  app.post("/api/cancel-booking", async (req, res) => {
+  const { ownerRowIndex, unitNo, appointmentDate, purchaserEmail, purchaserName } = req.body || {};
 
+  if (!ownerRowIndex || !unitNo || !purchaserEmail || !purchaserName) {
+    return res.status(400).json({ success: false, message: "Missing required fields." });
+  }
+
+  try {
+    const auth = await getSheetsAuth();
+    const sheets = google.sheets({ version: "v4", auth });
+
+    // 1. Clear VPAppointmentDate in UnitNoOwnerInfo
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: sheetsSpreadsheetId,
+      range: `${sheetsTabName}!F${ownerRowIndex}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [[""]] },
+    });
+
+    // 2. Find and clear the unit from VPSlots
+    const slotsResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetsSpreadsheetId,
+      range: `${slotsTabName}!A2:G`,
+    });
+
+    const rows = slotsResponse.data.values || [];
+    let slotRowIndex = -1;
+    let bookedCol = "";
+    let currentAvail = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const e = (row[4] ?? "").trim().toLowerCase();
+      const f = (row[5] ?? "").trim().toLowerCase();
+      const g = (row[6] ?? "").trim().toLowerCase();
+      const target = unitNo.trim().toLowerCase();
+
+      if (e === target) { slotRowIndex = i + 2; bookedCol = "E"; currentAvail = Number(row[3] ?? 0); break; }
+      if (f === target) { slotRowIndex = i + 2; bookedCol = "F"; currentAvail = Number(row[3] ?? 0); break; }
+      if (g === target) { slotRowIndex = i + 2; bookedCol = "G"; currentAvail = Number(row[3] ?? 0); break; }
+    }
+
+    if (slotRowIndex !== -1 && bookedCol) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetsSpreadsheetId,
+        requestBody: {
+          valueInputOption: "USER_ENTERED",
+          data: [
+            { range: `${slotsTabName}!${bookedCol}${slotRowIndex}`, values: [[""]] },
+            { range: `${slotsTabName}!D${slotRowIndex}`, values: [[String(currentAvail + 1)]] },
+          ],
+        },
+      });
+    }
+
+    // 3. Send cancellation email
+    await resend.emails.send({
+      from: resendFrom,
+      to: purchaserEmail,
+      subject: "VP Appointment Cancellation - Ruby Residences",
+      text: `Dear ${purchaserName},\n\nYour Vacant Possession (VP) appointment for Unit ${unitNo}${appointmentDate ? ` scheduled on ${appointmentDate}` : ""} has been cancelled by the management.\n\nPlease log in to rebook your appointment at your earliest convenience:\nhttps://ruby.dig-intel.com/login\n\nIf you have any questions, please contact Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`,
+    });
+
+    return res.json({ success: true, message: "Booking cancelled, slot released, and email sent." });
+  } catch (error) {
+    console.error("[CancelBooking] failed", error);
+    return res.status(500).json({ success: false, message: String(error) });
+  }
+});
   // Serve static files from dist/public in production
   const staticPath =
     process.env.NODE_ENV === "production"

@@ -184,64 +184,48 @@ export default function AdminOwnerInfo() {
     }
   };
 
-  const handleCancelBooking = async (index: number) => {
-    const owner = owners[index];
-    if (!owner.VPAppointmentDate) {
-      toast.error("This record has no active booking to cancel.");
-      return;
-    }
+const handleCancelBooking = async (index: number) => {
+  const owner = owners[index];
+  if (!owner.VPAppointmentDate) {
+    toast.error("This record has no active booking to cancel.");
+    return;
+  }
 
-    if (
-      !confirm(`Cancel booking for ${owner.PurchaserName} (${owner.UnitNo})?`)
-    ) {
-      return;
-    }
+  if (!confirm(`Cancel booking for ${owner.PurchaserName} (${owner.UnitNo})? They will be notified by email.`)) {
+    return;
+  }
 
-    const localCancelResult = MockDb.cancelBooking(owner.UnitNo);
-    if (!localCancelResult.success && !isSheetMode) {
-      toast.error(localCancelResult.message);
-      return;
-    }
+  try {
+    const response = await fetch('/api/cancel-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ownerRowIndex: owner.rowIndex,
+        unitNo: owner.UnitNo,
+        appointmentDate: owner.VPAppointmentDate,
+        purchaserEmail: owner.PurchaserEmail,
+        purchaserName: owner.PurchaserName,
+      }),
+    });
 
-    if (!localCancelResult.success) {
-      console.warn(
-        "[AdminOwnerInfo] local cancellation skipped:",
-        localCancelResult.message
-      );
-    }
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
 
-    if (owner.rowIndex) {
-      try {
-        await fetch("/api/update-sheet", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            rowIndex: owner.rowIndex,
-            appointmentDate: "",
-          }),
-        });
-      } catch (error) {
-        console.error("[AdminOwnerInfo] sheet clear failed", error);
-      }
-    }
-
+    // Refresh owners from sheet
     if (isSheetMode) {
-      try {
-        const data = await fetchSheetOwners();
-        setOwners(data);
-      } catch (error) {
-        console.error("[AdminOwnerInfo] failed to reload sheet owners", error);
-      }
+      const data = await fetchSheetOwners();
+      setOwners(data);
     } else {
+      MockDb.cancelBooking(owner.UnitNo);
       setOwners(MockDb.getOwners());
     }
 
-    toast.success(
-      localCancelResult.success
-        ? localCancelResult.message
-        : "Booking cancelled successfully."
-    );
-  };
+    toast.success("Booking cancelled and buyer notified by email.");
+  } catch (error: any) {
+    console.error('[AdminOwnerInfo] cancel booking failed', error);
+    toast.error(error.message || "Failed to cancel booking.");
+  }
+};
 
   const sendVPNoticeEmail = async (index: number) => {
     const owner = owners[index];
@@ -266,8 +250,7 @@ export default function AdminOwnerInfo() {
 
     const dateSent = new Date().toISOString().split("T")[0];
     const subject = "Vacant Possession (VP) Notice from Ruby Residences";
-    const text = `Dear ${owner.PurchaserName},\n\nThis is your Vacant Possession (VP) notice for Unit ${owner.UnitNo}.\n\nPlease log in to schedule your VP appointment at your earliest convenience.\n\nNotice Sent: ${dateSent}\n\nIf you have any questions, please contact Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`;
-
+    const text = `Dear ${owner.PurchaserName},\n\nThis is your Vacant Possession (VP) notice for Unit ${owner.UnitNo}.\n\nPlease log in to schedule your VP appointment at your earliest convenience:\nhttps://ruby.dig-intel.com/login\n\nNotice Sent: ${dateSent}\n\nIf you have any questions, please contact Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`;
     try {
       const emailResponse = await fetch("/api/send-email", {
         method: "POST",
@@ -337,7 +320,7 @@ export default function AdminOwnerInfo() {
     for (const { owner, index } of eligible) {
       try {
         const subject = "Vacant Possession (VP) Notice from Ruby Residences";
-        const text = `Dear ${owner.PurchaserName},\n\nThis is your Vacant Possession (VP) notice for Unit ${owner.UnitNo}.\n\nPlease log in here \n {Login Link} \n to schedule your VP appointment at your earliest convenience.\n\nNotice Sent: ${dateSent}\n\nIf you have any questions, please contact Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`;
+        const text = `Dear ${owner.PurchaserName},\n\nThis is your Vacant Possession (VP) notice for Unit ${owner.UnitNo}.\n\nPlease log in here \n https://ruby.dig-intel.com/login \n to schedule your VP appointment at your earliest convenience.\n\nNotice Sent: ${dateSent}\n\nIf you have any questions, please contact Aviscon Property Management at 03-2011 9966.\n\nWarm regards,\nAviscon Property Management`;
 
         const emailResponse = await fetch("/api/send-email", {
           method: "POST",
